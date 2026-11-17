@@ -1,0 +1,851 @@
+<title>Lunar Answer Blaster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen arcade cockpit. HUD strip, question card, play field over the lunar south-pole horizon. Single dark theme by choice. */
+:root {
+  color-scheme: dark;
+  --void: #060a15;
+  --night: #0d1426;
+  --panel: #131c33;
+  --line: #26324f;
+  --ink: #e8ecf6;
+  --muted: #8d97ae;
+  --sun: #ffb547;
+  --ok: #5be3b0;
+  --bad: #ff6b5e;
+  --habitat: #ffb547;
+  --lander: #6cc6ff;
+  --rover: #c7a4ff;
+  --f-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+html, body { height: 100%; }
+body {
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--f-body);
+  overflow: hidden;
+}
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.brand {
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sun);
+}
+.stats { display: flex; gap: 18px; align-items: center; }
+.stat { display: flex; flex-direction: column; align-items: flex-end; }
+.stat small {
+  font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+}
+.stat b {
+  font-family: var(--f-mono); font-weight: 500; font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.lives { display: flex; gap: 4px; height: 1.3rem; align-items: center; }
+.life {
+  width: 12px; height: 14px; background: var(--sun);
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+}
+.life.lost { background: var(--line); }
+
+.qcard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 4.6rem;
+  box-sizing: border-box;
+}
+.chip {
+  align-self: flex-start;
+  font-family: var(--f-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+}
+.chip[data-stage="habitat"] { color: var(--habitat); }
+.chip[data-stage="lander"]  { color: var(--lander); }
+.chip[data-stage="rover"]   { color: var(--rover); }
+.question {
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: clamp(1.05rem, 2.6vw, 1.4rem);
+  line-height: 1.25;
+  text-wrap: balance;
+  margin: 0;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--night);
+  touch-action: none;
+  cursor: crosshair;
+}
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.toast {
+  position: absolute;
+  left: 50%; top: 14px;
+  transform: translateX(-50%);
+  max-width: min(90%, 520px);
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(6, 10, 21, 0.88);
+  border: 1px solid var(--line);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}
+.toast b { font-family: var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; }
+.toast.good { border-color: var(--ok); }
+.toast.good b { color: var(--ok); }
+.toast.bad { border-color: var(--bad); }
+.toast.bad b { color: var(--bad); }
+
+.overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 10, 21, 0.78);
+  padding: 16px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+.panel {
+  max-width: 460px;
+  width: 100%;
+  display: flex; flex-direction: column; gap: 14px;
+  text-align: center;
+  margin: auto;
+}
+.panel h1 {
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: clamp(1.8rem, 6vw, 2.6rem);
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+.panel h1 span { color: var(--sun); }
+.panel p { margin: 0; color: var(--muted); line-height: 1.5; }
+.panel .he { color: var(--ink); font-weight: 600; }
+.stages { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.keys {
+  font-size: 0.85rem; color: var(--muted);
+  display: grid; grid-template-columns: auto auto; gap: 4px 12px;
+  justify-content: center; text-align: left;
+}
+kbd {
+  font-family: var(--f-mono); font-size: 0.78rem;
+  border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 4px; padding: 1px 6px; color: var(--ink);
+}
+button.go {
+  align-self: center;
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--void);
+  background: var(--sun);
+  border: 0;
+  border-radius: 6px;
+  padding: 12px 28px;
+  cursor: pointer;
+}
+button.go:hover { filter: brightness(1.08); }
+button.go:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.big-score {
+  font-family: var(--f-mono);
+  font-size: 2.6rem;
+  color: var(--sun);
+  font-variant-numeric: tabular-nums;
+}
+.review {
+  text-align: left;
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 34vh; overflow-y: auto;
+  padding: 0; margin: 0; list-style: none;
+}
+.review li {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.review li span { color: var(--ok); font-weight: 600; }
+.help { margin: 0; font-size: 0.78rem; color: var(--muted); text-align: center; }
+.tools { display: flex; gap: 8px; align-items: center; }
+.tool {
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.tool:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.tool:disabled { opacity: 0.45; cursor: default; }
+.tool.ready { border-color: var(--sun); color: var(--sun); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(255,181,71,0.25); } }
+@media (prefers-reduced-motion: reduce) { .tool.ready { animation: none; } }
+.pips { display: flex; gap: 3px; height: 1.3rem; align-items: center; }
+.pip { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--ok); }
+.pip.on { background: var(--ok); }
+@media (max-width: 480px) {
+  .brand { font-size: 0.9rem; }
+  .stats { gap: 12px; }
+  .help { display: none; }
+}
+</style>
+
+<div class="app">
+  <header class="hud">
+    <div class="brand">Lunar Answer Blaster</div>
+    <div class="stats">
+      <div class="stat"><small>Question</small><b id="prog">0 / 0</b></div>
+      <div class="stat"><small>Score</small><b id="score">0</b></div>
+      <div class="stat"><small>Ships</small><div class="lives" id="lives"></div></div>
+      <div class="stat"><small>Streak → hint</small><div class="pips" id="pips"></div></div>
+    </div>
+    <div class="tools">
+      <button class="tool" id="hintBtn" type="button" disabled>Hint ×0</button>
+      <button class="tool" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
+    </div>
+  </header>
+
+  <section class="qcard" aria-live="polite">
+    <span class="chip" id="chip" data-stage="habitat">Italy's Moon Habitat</span>
+    <p class="question" id="question">Press Launch to start the mission.</p>
+  </section>
+
+  <div class="stage" id="stage">
+    <canvas id="c"></canvas>
+    <div class="toast" id="toast" hidden></div>
+
+    <div class="overlay" id="startScreen">
+      <div class="panel">
+        <h1>Lunar Answer <span>Blaster</span></h1>
+        <p>Cargo pods are falling toward the lunar south pole. Each one carries an answer. Shoot the pod with the right answer before it lands.</p>
+        <p class="he" dir="rtl" lang="he">ירו בתשובה הנכונה! תשובה שגויה או איחור עולים לכם בחללית.</p>
+        <p class="he" dir="rtl" lang="he">5 תשובות נכונות ברצף בלי טעות = רמז! לחצו H או על כפתור Hint כדי להעלים תשובה שגויה.</p>
+        <div class="stages">
+          <span class="chip" data-stage="habitat">Moon Habitat</span>
+          <span class="chip" data-stage="lander">Large Lunar Lander</span>
+          <span class="chip" data-stage="rover">Lunar Cruiser</span>
+        </div>
+        <div class="keys">
+          <span><kbd>←</kbd> <kbd>→</kbd> or mouse</span><span>Move the ship</span>
+          <span><kbd>Space</kbd> or click</span><span>Fire</span>
+          <span>Phone</span><span>Touch to move and fire</span>
+          <span><kbd>H</kbd></span><span>Use a hint</span>
+          <span><kbd>M</kbd></span><span>Sound on / off</span>
+        </div>
+        <button class="go" id="startBtn" type="button">Launch</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="endScreen" hidden>
+      <div class="panel">
+        <h1 id="endTitle">Mission complete</h1>
+        <div class="big-score" id="endScore">0</div>
+        <p id="endLine"></p>
+        <ul class="review" id="review"></ul>
+        <button class="go" id="againBtn" type="button">Fly again</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="help">Move with ← → or the mouse · Fire with Space or click · 5 right in a row earns a hint (H) · Wrong pod or a landed pod costs one ship</p>
+</div>
+
+<script>
+(() => {
+  const STAGES = {
+    habitat: "Italy's Moon Habitat",
+    lander: "Large Lunar Lander",
+    rover: "Lunar Cruiser Rover"
+  };
+
+  const QUESTIONS = [
+    { s: "habitat", q: "What is the mass of Italy's Moon habitat?", a: "About 15 tons", w: ["About 2 tons", "About 150 tons"], fact: "The habitat has a mass of about 15 tons." },
+    { s: "habitat", q: "How long can one mission live in the habitat each year?", a: "7 to 30 days", w: ["1 to 2 days", "6 months"], fact: "It can host one mission each year for 7 to 30 days." },
+    { s: "habitat", q: "How many years does it take to build the habitat?", a: "12 years", w: ["2 years", "40 years"], fact: "Building the habitat takes twelve years." },
+    { s: "habitat", q: "In which year will the habitat be sent to the Moon?", a: "2033", w: ["2025", "2050"], fact: "The habitat will be sent to the Moon in 2033." },
+    { s: "habitat", q: "What is the habitat built to withstand?", a: "Gravity and radiation", w: ["Rain and wind", "Fire and floods"], fact: "It is a home for astronauts, built to withstand things like gravity and radiation." },
+    { s: "lander", q: "How much does the Large Lunar Lander cost?", a: "Close to a billion euros", w: ["About a million euros", "About 50 billion euros"], fact: "The lander costs close to a billion euros." },
+    { s: "lander", q: "How much cargo can ESA's lander carry?", a: "2 tons", w: ["15 tons", "200 kg"], fact: "It can take 2 tons of cargo to the Moon." },
+    { s: "lander", q: "Where on the Moon does the lander bring its cargo?", a: "The south pole", w: ["The north pole", "The equator"], fact: "The lander takes cargo to the Moon's south pole." },
+    { s: "lander", q: "What unloads the cargo from the lander?", a: "A robotic arm", w: ["Astronauts by hand", "A crane on a rover"], fact: "A robotic arm unloads the cargo." },
+    { s: "lander", q: "What is the Large Lunar Lander for Europe?", a: "Its main way to send cargo to space", w: ["A home for astronauts", "A car for the Moon"], fact: "It is Europe's main way to send cargo to space." },
+    { s: "rover", q: "Why must astronauts wear suits all the time in the Lunar Cruiser?", a: "It is unpressurised", w: ["It has no seats", "It drives underwater"], fact: "The rover is unpressurised, so astronauts keep their suits on." },
+    { s: "rover", q: "How far can the Lunar Cruiser drive in its lifetime?", a: "15,000 km", w: ["150 km", "1,500,000 km"], fact: "It can drive 15,000 km in its lifetime." },
+    { s: "rover", q: "Which company is a partner in building the rover?", a: "Toyota", w: ["Ferrari", "Boeing"], fact: "Toyota is a partner in building the Lunar Cruiser." },
+    { s: "rover", q: "What does the Lunar Cruiser do?", a: "Takes astronauts from place to place", w: ["Launches rockets to Earth", "Grows food on the Moon"], fact: "It drives astronauts from one place to another near the south pole." }
+  ];
+
+  const $ = id => document.getElementById(id);
+  const stageEl = $("stage"), cv = $("c"), ctx = cv.getContext("2d");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const shuffle = arr => { const r = arr.slice(); for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; } return r; };
+
+  let W = 0, H = 0;
+  let stars = [], craters = [];
+  const ship = { x: 0, y: 0, tx: null, vx: 0 };
+  const keys = {};
+  let bullets = [], particles = [], targets = [];
+  let phase = "menu";           // menu | play | between | over
+  let order = [], idx = 0, score = 0, lives = 3, cooldown = 0, betweenT = 0, shake = 0, qTime = 0, qDur = 1;
+  let firing = false, missed = [], correctCount = 0;
+  let streak = 0, hints = 0, qMistake = false;
+  const STREAK_FOR_HINT = 5;
+
+  // ---------- Sound (synthesised with Web Audio, no files) ----------
+  let actx = null, master = null, muted = false;
+  function initAudio() {
+    if (!actx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      actx = new AC();
+      master = actx.createGain();
+      master.gain.value = muted ? 0 : 0.5;
+      master.connect(actx.destination);
+    }
+    if (actx.state === "suspended") actx.resume();
+  }
+  function tone(freq, dur, { type = "sine", vol = 0.3, to = null, at = 0 } = {}) {
+    if (!actx || muted) return;
+    const t0 = actx.currentTime + at;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(master);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function noise(dur, vol = 0.3, at = 0) {
+    if (!actx || muted) return;
+    const t0 = actx.currentTime + at;
+    const buf = actx.createBuffer(1, Math.floor(actx.sampleRate * dur), actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const src = actx.createBufferSource(), g = actx.createGain(), f = actx.createBiquadFilter();
+    f.type = "lowpass"; f.frequency.value = 900;
+    src.buffer = buf; g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t0);
+  }
+  const sfx = {
+    shoot:   () => tone(880, 0.09, { type: "square", vol: 0.08, to: 330 }),
+    correct: () => { noise(0.25, 0.25); [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, { type: "triangle", vol: 0.22, at: i * 0.07 })); },
+    wrong:   () => { noise(0.35, 0.35); tone(220, 0.4, { type: "sawtooth", vol: 0.18, to: 70 }); },
+    timeout: () => { tone(330, 0.25, { type: "square", vol: 0.12 }); tone(247, 0.4, { type: "square", vol: 0.12, at: 0.22 }); },
+    hintGet: () => [784, 988, 1175, 1568, 1976].forEach((f, i) => tone(f, 0.2, { type: "sine", vol: 0.2, at: i * 0.06 })),
+    hintUse: () => tone(1200, 0.35, { type: "sine", vol: 0.2, to: 300 }),
+    launch:  () => tone(120, 0.6, { type: "sawtooth", vol: 0.12, to: 600 }),
+    win:     () => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, 0.22, { type: "triangle", vol: 0.22, at: i * 0.12 })),
+    lose:    () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.3, { type: "triangle", vol: 0.2, at: i * 0.18 }))
+  };
+  function setMuted(m) {
+    muted = m;
+    if (master) master.gain.value = muted ? 0 : 0.5;
+    const b = $("muteBtn");
+    b.textContent = muted ? "Sound off" : "Sound on";
+    b.setAttribute("aria-pressed", String(muted));
+  }
+
+  // ---------- Streak & hints ----------
+  function drawStreak() {
+    const n = streak % STREAK_FOR_HINT;
+    $("pips").innerHTML = Array.from({ length: STREAK_FOR_HINT }, (_, i) => `<span class="pip${i < n ? " on" : ""}"></span>`).join("");
+    const b = $("hintBtn");
+    b.textContent = `Hint ×${hints}`;
+    b.disabled = hints === 0;
+    b.classList.toggle("ready", hints > 0);
+  }
+  function useHint() {
+    if (phase !== "play" || hints <= 0) return;
+    const wrongs = targets.filter(t => !t.ok && t.alive && !t.dying);
+    if (!wrongs.length) return;
+    const t = wrongs[Math.floor(Math.random() * wrongs.length)];
+    t.dying = true;
+    burst(t.x, t.y + t.h / 2, "#6cc6ff", 30);
+    hints--;
+    drawStreak();
+    sfx.hintUse();
+    toast("good", "Hint used", `"${t.text}" is wrong. It's gone!`);
+  }
+
+  const groundH = () => Math.max(36, H * 0.09);
+
+  function makeScene() {
+    stars = Array.from({ length: Math.round(W * H / 2600) }, () => ({ x: Math.random() * W, y: Math.random() * H, z: rand(0.2, 1) }));
+    craters = Array.from({ length: Math.max(4, Math.round(W / 90)) }, () => ({ x: Math.random() * W, r: rand(8, 26), d: rand(0.25, 0.75) }));
+  }
+
+  function resize() {
+    const r = stageEl.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    makeScene();
+    ship.y = H - groundH() - 30;
+    ship.x = clamp(ship.x || W / 2, 20, W - 20);
+    layoutTargets();
+  }
+  new ResizeObserver(resize).observe(stageEl);
+
+  // ---------- Text helpers ----------
+  const podFont = () => `600 ${clamp(Math.round(W / 46), 12, 17)}px "IBM Plex Sans", "Segoe UI", sans-serif`;
+  function wrap(text, maxW) {
+    ctx.font = podFont();
+    const words = text.split(" "), lines = [];
+    let line = "";
+    for (const w of words) {
+      const t = line ? line + " " + w : w;
+      if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // ---------- Targets ----------
+  function layoutTargets() {
+    if (!targets.length) return;
+    const n = targets.length, lane = W / n;
+    const fs = clamp(Math.round(W / 46), 12, 17);
+    targets.forEach((t, i) => {
+      t.x0 = lane * (i + 0.5);
+      t.w = Math.min(lane - 14, 230);
+      t.lines = wrap(t.text, t.w - 22);
+      t.lh = fs * 1.25;
+      t.h = t.lines.length * t.lh + 24;
+    });
+  }
+
+  function spawnQuestion() {
+    const Q = order[idx];
+    $("chip").dataset.stage = Q.s;
+    $("chip").textContent = STAGES[Q.s];
+    $("question").textContent = Q.q;
+    $("prog").textContent = `${idx + 1} / ${order.length}`;
+    targets = shuffle([{ text: Q.a, ok: true }, ...Q.w.map(t => ({ text: t, ok: false }))]).map(t => ({
+      ...t, y: 0, alive: true, flash: 0, wob: rand(0, Math.PI * 2), fade: 1
+    }));
+    layoutTargets();
+    targets.forEach(t => { t.y = -t.h - rand(0, 50); });
+    const travel = ship.y - 40;
+    qDur = Math.max(9, 15 - idx * 0.35);         // seconds until the pods land; gets faster
+    targets.forEach(t => { t.vy = (travel + t.h) / qDur; });
+    qTime = 0;
+    qMistake = false;
+    phase = "play";
+  }
+
+  // ---------- HUD ----------
+  function drawLives() {
+    $("lives").innerHTML = [0, 1, 2].map(i => `<span class="life${i < lives ? "" : " lost"}"></span>`).join("");
+    $("score").textContent = score;
+  }
+  let toastTimer = 0;
+  function toast(kind, title, text) {
+    const el = $("toast");
+    el.className = "toast " + kind;
+    el.innerHTML = `<b>${title}</b><br>${text}`;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 2300);
+  }
+
+  function burst(x, y, color, n) {
+    if (reduceMotion) n = Math.round(n / 3);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = rand(60, 320);
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.4, 0.9), max: 0.9, color });
+    }
+  }
+
+  function loseLife() {
+    lives--;
+    drawLives();
+    if (!reduceMotion) shake = 0.35;
+    burst(ship.x, ship.y, "#ff6b5e", 18);
+  }
+
+  function endQuestion(delay) {
+    phase = "between";
+    betweenT = delay;
+  }
+
+  function hitTarget(t) {
+    const Q = order[idx];
+    const cx = t.x, cy = t.y + t.h / 2;
+    if (t.ok) {
+      t.alive = false;
+      const bonus = Math.round(100 * Math.max(0, 1 - qTime / qDur));
+      score += 100 + bonus;
+      correctCount++;
+      drawLives();
+      burst(cx, cy, "#5be3b0", 50);
+      burst(cx, cy, "#ffb547", 25);
+      targets.forEach(o => { if (o !== t) o.dying = true; });
+      sfx.correct();
+      if (!qMistake) {
+        streak++;
+        if (streak % STREAK_FOR_HINT === 0) {
+          hints++;
+          setTimeout(sfx.hintGet, 350);
+          toast("good", `Correct! +${100 + bonus} · Hint earned!`, `${streak} in a row with no mistakes. Press H when you need it. ${Q.fact}`);
+        } else {
+          toast("good", `Correct! +${100 + bonus}`, Q.fact);
+        }
+      } else {
+        toast("good", `Correct! +${100 + bonus}`, Q.fact);
+      }
+      drawStreak();
+      endQuestion(2.2);
+    } else {
+      t.alive = false;
+      burst(cx, cy, "#ff6b5e", 30);
+      sfx.wrong();
+      qMistake = true;
+      streak = 0;
+      drawStreak();
+      loseLife();
+      if (!missed.includes(Q)) missed.push(Q);
+      if (lives <= 0) {
+        toast("bad", "Ship lost", `The answer was: ${Q.a}`);
+        revealCorrect();
+        endQuestion(2.2);
+      } else {
+        toast("bad", "Wrong pod", "That's not it. Try another one!");
+      }
+    }
+  }
+
+  function revealCorrect() { targets.forEach(t => { if (!t.ok) t.dying = true; else t.reveal = true; }); }
+
+  function timeout() {
+    const Q = order[idx];
+    sfx.timeout();
+    streak = 0;
+    drawStreak();
+    loseLife();
+    if (!missed.includes(Q)) missed.push(Q);
+    revealCorrect();
+    toast("bad", "Too slow", `The answer was: ${Q.a}`);
+    endQuestion(2.6);
+  }
+
+  function next() {
+    $("toast").hidden = true;
+    if (lives <= 0 || idx >= order.length - 1) return finish();
+    idx++;
+    spawnQuestion();
+  }
+
+  function finish() {
+    phase = "over";
+    targets = [];
+    const won = lives > 0;
+    (won ? sfx.win : sfx.lose)();
+    $("endTitle").textContent = won ? "Mission complete" : "Mission over";
+    $("endScore").textContent = score;
+    $("endLine").textContent = `You hit ${correctCount} of ${order.length} correct answers` + (won ? "." : ` before your ships ran out.`);
+    $("review").innerHTML = missed.length
+      ? missed.map(q => `<li>${q.q}<br><span>${q.a}</span></li>`).join("")
+      : `<li>Perfect run. Every answer was right on the first shot.</li>`;
+    $("endScreen").hidden = false;
+    $("againBtn").focus();
+  }
+
+  function start() {
+    order = shuffle(QUESTIONS);
+    idx = 0; score = 0; lives = 3; correctCount = 0; missed = [];
+    streak = 0; hints = 0;
+    bullets = []; particles = [];
+    initAudio();
+    sfx.launch();
+    drawLives();
+    drawStreak();
+    $("startScreen").hidden = true;
+    $("endScreen").hidden = true;
+    ship.x = W / 2;
+    spawnQuestion();
+  }
+
+  // ---------- Input ----------
+  addEventListener("keydown", e => {
+    if (!e.repeat && (e.key === "h" || e.key === "H")) { useHint(); return; }
+    if (!e.repeat && (e.key === "m" || e.key === "M")) { setMuted(!muted); return; }
+    if (["ArrowLeft", "ArrowRight", " ", "a", "d", "A", "D"].includes(e.key)) {
+      if (e.target.tagName === "BUTTON" && e.key === " ") return;
+      e.preventDefault();
+      keys[e.key.toLowerCase()] = true;
+      ship.tx = null;
+    }
+  });
+  addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+
+  const localX = e => e.clientX - stageEl.getBoundingClientRect().left;
+  stageEl.addEventListener("pointerdown", e => {
+    if (phase !== "play" && phase !== "between") return;
+    ship.tx = localX(e);
+    firing = true;
+    fire();
+    stageEl.setPointerCapture?.(e.pointerId);
+  });
+  stageEl.addEventListener("pointermove", e => {
+    if (e.pointerType === "mouse" || firing) ship.tx = localX(e);
+  });
+  const stopFire = () => { firing = false; };
+  stageEl.addEventListener("pointerup", stopFire);
+  stageEl.addEventListener("pointercancel", stopFire);
+
+  function fire() {
+    if (cooldown > 0 || (phase !== "play" && phase !== "between")) return;
+    bullets.push({ x: ship.x, y: ship.y - 20 });
+    cooldown = 0.24;
+    sfx.shoot();
+  }
+
+  $("hintBtn").addEventListener("click", e => { useHint(); e.currentTarget.blur(); });
+  $("muteBtn").addEventListener("click", e => { initAudio(); setMuted(!muted); e.currentTarget.blur(); });
+  $("startBtn").addEventListener("click", start);
+  $("againBtn").addEventListener("click", start);
+
+  // ---------- Update ----------
+  function update(dt) {
+    for (const s of stars) { s.y += s.z * 18 * dt; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
+
+    // ship
+    const speed = Math.max(320, W * 0.9);
+    let dir = 0;
+    if (keys["arrowleft"] || keys["a"]) dir -= 1;
+    if (keys["arrowright"] || keys["d"]) dir += 1;
+    if (dir) ship.x += dir * speed * dt;
+    else if (ship.tx != null) ship.x += clamp(ship.tx - ship.x, -speed * 1.6 * dt, speed * 1.6 * dt);
+    ship.x = clamp(ship.x, 18, W - 18);
+
+    cooldown -= dt;
+    if (keys[" "] || firing) fire();
+
+    // bullets
+    for (const b of bullets) b.y -= 820 * dt;
+    bullets = bullets.filter(b => {
+      if (b.y < -20) return false;
+      if (phase !== "play") return true;
+      for (const t of targets) {
+        if (!t.alive || t.dying) continue;
+        if (b.x > t.x - t.w / 2 && b.x < t.x + t.w / 2 && b.y > t.y && b.y < t.y + t.h) {
+          hitTarget(t);
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // targets
+    if (phase === "play") qTime += dt;
+    for (const t of targets) {
+      t.wob += dt * 1.4;
+      t.x = t.x0 + Math.sin(t.wob) * Math.min(12, W * 0.015);
+      if (phase === "play") t.y += t.vy * dt;
+      if (t.dying) t.fade = Math.max(0, t.fade - dt * 2.5);
+    }
+    if (phase === "play") {
+      const c = targets.find(t => t.ok && t.alive);
+      if (c && c.y + c.h >= ship.y - 24) timeout();
+    }
+
+    // particles
+    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 140 * dt; p.vx *= 0.98; p.life -= dt; }
+    particles = particles.filter(p => p.life > 0);
+
+    if (phase === "between") { betweenT -= dt; if (betweenT <= 0) next(); }
+    if (shake > 0) shake -= dt;
+  }
+
+  // ---------- Draw ----------
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawGround() {
+    const gy = H - groundH();
+    const g = ctx.createLinearGradient(0, gy - 20, 0, H);
+    g.addColorStop(0, "#4b5266");
+    g.addColorStop(1, "#1c2131");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    ctx.lineTo(0, gy + 8);
+    ctx.quadraticCurveTo(W * 0.5, gy - 16, W, gy + 8);
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fill();
+    // low south-pole sun skimming the horizon
+    ctx.fillStyle = "rgba(255,181,71,0.35)";
+    ctx.fillRect(0, gy + 6, W, 1.5);
+    for (const c of craters) {
+      const cy = gy + 10 + c.d * (groundH() - 18);
+      ctx.fillStyle = "#151a28";
+      ctx.beginPath(); ctx.ellipse(c.x, cy, c.r, c.r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,200,120,0.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(c.x, cy, c.r, c.r * 0.28, 0, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(141,151,174,0.7)";
+    ctx.font = `500 10px "IBM Plex Mono", monospace`;
+    ctx.textAlign = "right";
+    ctx.fillText("LUNAR SOUTH POLE · 89.9°S", W - 10, H - 8);
+  }
+
+  function drawShip() {
+    const { x, y } = ship;
+    // flame
+    const f = 8 + Math.random() * 6;
+    ctx.fillStyle = "#ffb547";
+    ctx.beginPath(); ctx.moveTo(x - 5, y + 12); ctx.lineTo(x, y + 12 + f); ctx.lineTo(x + 5, y + 12); ctx.fill();
+    // legs
+    ctx.strokeStyle = "#8d97ae"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 10, y + 6); ctx.lineTo(x - 17, y + 16); ctx.moveTo(x + 10, y + 6); ctx.lineTo(x + 17, y + 16); ctx.stroke();
+    // body
+    ctx.fillStyle = "#e8ecf6";
+    ctx.beginPath(); ctx.moveTo(x, y - 20); ctx.lineTo(x + 13, y + 10); ctx.lineTo(x - 13, y + 10); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#6cc6ff";
+    ctx.beginPath(); ctx.arc(x, y - 2, 4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function drawPod(t) {
+    const x = t.x - t.w / 2, y = t.y;
+    ctx.globalAlpha = t.fade;
+    const border = t.reveal ? "#5be3b0" : "#ffb547";
+    ctx.fillStyle = t.reveal ? "rgba(91,227,176,0.16)" : "rgba(19,28,51,0.92)";
+    roundRect(x, y, t.w, t.h, 8);
+    ctx.fill();
+    ctx.strokeStyle = border; ctx.lineWidth = t.reveal ? 2.5 : 1.5;
+    ctx.stroke();
+    // little parachute lines / thruster tabs
+    ctx.fillStyle = border;
+    ctx.fillRect(x + 10, y - 3, 14, 3);
+    ctx.fillRect(x + t.w - 24, y - 3, 14, 3);
+    ctx.fillStyle = "#e8ecf6";
+    ctx.font = podFont();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    t.lines.forEach((l, i) => ctx.fillText(l, t.x, y + 12 + t.lh * (i + 0.5)));
+    ctx.textBaseline = "alphabetic";
+    ctx.globalAlpha = 1;
+  }
+
+  function draw() {
+    ctx.save();
+    if (shake > 0) ctx.translate(rand(-5, 5), rand(-4, 4));
+    ctx.fillStyle = "#0d1426";
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+    for (const s of stars) {
+      ctx.fillStyle = `rgba(232,236,246,${0.25 + s.z * 0.6})`;
+      ctx.fillRect(s.x, s.y, s.z * 1.8, s.z * 1.8);
+    }
+    // Earth on the horizon
+    ctx.fillStyle = "#2c6fb0";
+    ctx.beginPath(); ctx.arc(W * 0.86, H * 0.16, Math.max(9, W * 0.022), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.beginPath(); ctx.arc(W * 0.86 + 3, H * 0.16 - 2, Math.max(3, W * 0.007), 0, Math.PI * 2); ctx.fill();
+
+    drawGround();
+
+    // landing danger line
+    if (phase === "play") {
+      ctx.strokeStyle = "rgba(255,107,94,0.25)";
+      ctx.setLineDash([6, 8]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, ship.y - 24); ctx.lineTo(W, ship.y - 24); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    for (const t of targets) if (t.alive || t.reveal) drawPod(t);
+
+    ctx.fillStyle = "#ffe2a8";
+    for (const b of bullets) { ctx.fillRect(b.x - 1.5, b.y - 9, 3, 12); }
+
+    for (const p of particles) {
+      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    if (phase !== "over" && lives > 0) drawShip();
+    ctx.restore();
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (W > 0) { update(dt); draw(); }
+    requestAnimationFrame(loop);
+  }
+
+  drawLives();
+  drawStreak();
+  $("prog").textContent = `0 / ${QUESTIONS.length}`;
+  requestAnimationFrame(loop);
+})();
+</script>
